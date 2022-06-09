@@ -26,7 +26,7 @@ class SharableSpreadSheet
             sheet.Add(new List<String>());
             for (int j = 0; j < colsNum; j++)
             {
-                sheet[i][j] = "";
+                sheet[i].Add("");
             }
         }
     }
@@ -224,7 +224,7 @@ class SharableSpreadSheet
         sheet.Add(new List<string>());
         for (int j = 0; j < colsNum; j++)
         {
-            sheet[rowsNum - 1][j] = "";
+            sheet[rowsNum - 1].Add("");
         }
 
         for (int i = rowsNum-1; i > row1+1; i--)
@@ -246,7 +246,7 @@ class SharableSpreadSheet
         colsNum++;
         for (int i = 0; i < rowsNum; i++)
         {
-            sheet[i][colsNum-1] = "";
+            sheet[i].Add("");
         }
 
         for (int j = colsNum - 1; j > col1 + 1; j--)
@@ -264,11 +264,11 @@ class SharableSpreadSheet
         int c = 0;
         while (r < rowsNum && c < colsNum)
         {
-            if (searchInRangeHelper(r, c, rowsNum, colsNum, str, caseSensitive) != null)
+            if (searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, str, caseSensitive) != null)
             {
-                res.Append(searchInRangeHelper(r, c, rowsNum, colsNum, str, caseSensitive));
+                res.Add(searchInRangeHelper(c, colsNum-1, r, rowsNum-1, str, caseSensitive));
                 r = res[res.Count - 1].Item1;
-                c = res[res.Count - 1].Item2;
+                c = res[res.Count - 1].Item2 + 1;
             }
 
             else
@@ -389,6 +389,8 @@ class SharableSpreadSheet
     public Tuple<int, int> searchInRangeHelper(int col1, int col2, int row1, int row2, String str, bool _case)
     {
         // Read action
+        // Check bounds
+        // Needs fixing on loops
         bool valid1 = checkCell(row1, col1);
         if (!valid1)
         {
@@ -399,7 +401,7 @@ class SharableSpreadSheet
         {
             throw new Exception("Bad parameters");
         }
-        if (row1 >= row2 || col1 >= col2)
+        if (row1 > row2 || (row1 == row2 && col1 > col2))
         {
             throw new Exception("Bad parameters");
         }
@@ -416,19 +418,73 @@ class SharableSpreadSheet
         int row, col;
         // perform search within spesific range: [row1:row2,col1:col2] 
         //includes col1,col2,row1,row2
-        for (int i = row1; i < row2; i++)
+        if (row2 > row1)
         {
-            for (int j = col1; j < col2; j++)
+            for (int i = row1; i < row1 + 1; i++)
             {
-                //if (String.Equals(sheet[i, j], str))
-                //if (String.Equals(sheet[i][j], str))
-                if (caseEquals(sheet[i][j], str, _case))
+                for (int j = col1; j < colsNum; j++)
                 {
-                    row = i;
-                    col = j;
-                    Tuple<int, int> t = new(row, col);
-                    searches--;
-                    return t;
+                    //if (String.Equals(sheet[i, j], str))
+                    //if (String.Equals(sheet[i][j], str))
+                    if (caseEquals(sheet[i][j], str, _case))
+                    {
+                        row = i;
+                        col = j;
+                        Tuple<int, int> t = new(row, col);
+                        searches--;
+                        return t;
+                    }
+                }
+            }
+
+            for (int i = row1 + 1; i < row2; i++)
+            {
+                for (int j = 0; j < colsNum; j++)
+                {
+                    //if (String.Equals(sheet[i, j], str))
+                    //if (String.Equals(sheet[i][j], str))
+                    if (caseEquals(sheet[i][j], str, _case))
+                    {
+                        row = i;
+                        col = j;
+                        Tuple<int, int> t = new(row, col);
+                        searches--;
+                        return t;
+                    }
+                }
+            }
+
+            for (int i = row2; i < row2 + 1; i++)
+            {
+                for (int j = 0; j < col2 + 1; j++)
+                {
+                    //if (String.Equals(sheet[i, j], str))
+                    //if (String.Equals(sheet[i][j], str))
+                    if (caseEquals(sheet[i][j], str, _case))
+                    {
+                        row = i;
+                        col = j;
+                        Tuple<int, int> t = new(row, col);
+                        searches--;
+                        return t;
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = row1; i < row2+1; i++)
+            {
+                for (int j = col1; j < col2+1; j++)
+                {
+                    if (caseEquals(sheet[i][j], str, _case))
+                    {
+                        row = i;
+                        col = j;
+                        Tuple<int, int> t = new(row, col);
+                        searches--;
+                        return t;
+                    }
                 }
             }
         }
