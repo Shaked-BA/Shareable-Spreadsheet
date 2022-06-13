@@ -195,7 +195,7 @@ class Test
         Thread thread = new Thread(() => startLoad(sheet, fileName));
         thread.Start();
     }
-    static public void Main()
+    private void test()
     {
         int rows = 20, cols = 20;
         SharableSpreadSheet sheet = new SharableSpreadSheet(rows, cols);
@@ -242,12 +242,12 @@ class Test
         test.addRow(sheet, 15);
         test.getSize(sheet);
         test.findAll(sheet, "1,1", false);
-        test.save(sheet, "C:/Users/shake/Desktop/numeric2/New Text Document.txt");
+        test.save(sheet, "C:/Users/shake/Desktop/sheet.txt");
         test.addRow(sheet, 14);
         test.addRow(sheet, 15);
         test.getSize(sheet);
         test.findAll(sheet, "1,1", false);
-        test.load(sheet, "C:/Users/shake/Desktop/numeric2/New Text Document.txt");
+        test.load(sheet, "C:/Users/shake/Desktop/sheet.txt");
         test.getCell(sheet, 5, 7);
         test.searchInCol(sheet, 5, "5,5");
         test.searchInRow(sheet, 7, "7,7");
@@ -286,12 +286,12 @@ class Test
         test.addRow(sheet, 15);
         test.getSize(sheet);
         test.findAll(sheet, "1,1", false);
-        test.save(sheet, "C:/Users/shake/Desktop/numeric2/New Text Document.txt");
+        test.save(sheet, "C:/Users/shake/Desktop/sheet.txt");
         test.addRow(sheet, 14);
         test.addRow(sheet, 15);
         test.getSize(sheet);
         test.findAll(sheet, "1,1", false);
-        test.load(sheet, "C:/Users/shake/Desktop/numeric2/New Text Document.txt");
+        test.load(sheet, "C:/Users/shake/Desktop/sheet.txt");
         test.getCell(sheet, 5, 7);
         sheet.printSheet();
     }

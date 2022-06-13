@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
+
 class SharableSpreadSheet
 {
     private int rowsNum;
@@ -8,7 +10,7 @@ class SharableSpreadSheet
     private long readers = 0;
     private int writers = 0;
     private Semaphore readWriteMutex = new Semaphore(1, 1);
-    private Semaphore? searchersSemaphore = null;
+    private Semaphore? searchersSemaphore;
     private List<Mutex> rowsMutexes = new List<Mutex>();
     private List<List<String>> sheet;
 
@@ -92,6 +94,8 @@ class SharableSpreadSheet
     // Also waits for rows locks.
     public void exchangeRows(int row1, int row2)
     {
+        if (row1 == row2)
+            return;
         enterWriteSection();
         if (!checkRow(row1) || !checkRow(row2))
         {
@@ -113,6 +117,8 @@ class SharableSpreadSheet
     // Also waits for struct lock.
     public void exchangeCols(int col1, int col2)
     {
+        if (col1 == col2)
+            return;
         enterStructSection();
         if (!checkCol(col1) || !checkCol(col2))
         {
@@ -245,7 +251,7 @@ class SharableSpreadSheet
             {
                 res.Add(currentRes);
                 c = currentRes.Item2 + 1 >= colsNum ? 0 : currentRes.Item2 + 1;
-                r = c == 0 ? r += 1 : currentRes.Item1;
+                r = c == 0 ? r + 1 : currentRes.Item1;
             }
             else
                 break;
@@ -259,6 +265,8 @@ class SharableSpreadSheet
     // replace all oldStr cells with the newStr str according to caseSensitive param
     public void setAll(String oldStr, String newStr, bool caseSensitive)
     {
+        if (newStr == oldStr)
+            return;
         Tuple<int, int>[] locations = findAll(oldStr, caseSensitive);
         foreach (Tuple<int, int> location in locations)
             setCell(location.Item1, location.Item2, newStr);
@@ -280,9 +288,13 @@ class SharableSpreadSheet
     // This function is used just in the creation
     public void setConcurrentSearchLimit(int nUsers)
     {
+        enterStructSection();
         users = nUsers;
         if (nUsers > 0)
             searchersSemaphore = new Semaphore(users, users);
+        else
+            searchersSemaphore = null;
+        exitStructSection();
     }
 
     // save the spreadsheet to a file fileName.
