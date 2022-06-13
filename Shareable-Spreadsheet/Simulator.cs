@@ -53,6 +53,7 @@ class Simulator
         for (int t = 0; t < threadsNum; t++)
         {
             threads[t] = new Thread(() => startProcess());
+            threads[t].Name = t.ToString();
         }
     }
 
@@ -90,8 +91,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[getCell] ---Failed--- find string in cell[{1},{2}].", Thread.CurrentThread.Name, r0, c0);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[getCell] ---Failed--- find string in cell[{1},{2}].\n\tReason: {3}", Thread.CurrentThread.Name, r0, c0, e.Message);
                 }
                 break;
             case 1: // setCell
@@ -105,8 +105,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[setCell] ---Failed--- insert string \"{1}\" in cell[{2},{3}].", Thread.CurrentThread.Name, str1, r1, c1);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[setCell] ---Failed--- insert string \"{1}\" in cell[{2},{3}].\n\tReason: {4}", Thread.CurrentThread.Name, str1, r1, c1, e.Message);
                 }
                 break;
             case 2: // searchString
@@ -118,8 +117,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[searchString] string \"{1}\" wasn't found.", Thread.CurrentThread.Name, str2);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[searchString] string \"{1}\" wasn't found.\n\tReason: {2}", Thread.CurrentThread.Name, str2, e.Message);
                 }
                 break;
             case 3: // exchangeRows
@@ -132,8 +130,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[exchangeRows] ---Failed--- exchange rows {1} and {2}.", Thread.CurrentThread.Name, r13, r23);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[exchangeRows] ---Failed--- exchange rows {1} and {2}.\n\tReason: {3}", Thread.CurrentThread.Name, r13, r23, e.Message);
                 }
                 break;
             case 4: // exchangeCols
@@ -146,8 +143,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[exchangeCols] ---Failed--- exchange columns {1} and {2}.", Thread.CurrentThread.Name, c14, c24);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[exchangeCols] ---Failed--- exchange columns {1} and {2}.\n\tReason: {3}", Thread.CurrentThread.Name, c14, c24, e.Message);
                 }
                 break;
             case 5: // searchInRow
@@ -160,8 +156,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[searchInRow] ---Failed--- string \"{1}\" wasn't found in row {2}.", Thread.CurrentThread.Name, str5, r5);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[searchInRow] ---Failed--- string \"{1}\" wasn't found in row {2}.\n\tReason: {3}", Thread.CurrentThread.Name, str5, r5, e.Message);
                 }
                 break;
             case 6: // searchInCol
@@ -174,8 +169,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[searchInCol] ---Failed--- string \"{1}\" wasn't found in column {2}.", Thread.CurrentThread.Name, str6, c6);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[searchInCol] ---Failed--- string \"{1}\" wasn't found in column {2}.\n\tReason: {3}", Thread.CurrentThread.Name, str6, c6, e.Message);
                 }
                 break;
             case 7: // searchInRange
@@ -191,8 +185,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[searchInRange] ---Failed--- string \"{1}\" wasn't found in range [[{2},{3}]:[{4},{5}]].", Thread.CurrentThread.Name, str7, r17, c17, r27, c27);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[searchInRange] ---Failed--- string \"{1}\" wasn't found in range [[{2},{3}]:[{4},{5}]].\n\tReason: {6}", Thread.CurrentThread.Name, str7, r17, c17, r27, c27, e.Message);
                 }
                 break;
             case 8: // addRow
@@ -202,12 +195,11 @@ class Simulator
                     sheet.addRow(r8);
                     Console.WriteLine("User[{0}]:[addRow] a new row added after row {1}.", Thread.CurrentThread.Name, r8);
                     rows++;
-                    wordsRows = rows <= originalRows ? rows : wordsRows;
+                    wordsRows = rows <= originalRows ? rows : originalRows;
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[addRow] ---Failed--- a new row wasn't added after row {1}.", Thread.CurrentThread.Name, r8);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[addRow] ---Failed--- a new row wasn't added after row {1}.\n\tReason: {2}", Thread.CurrentThread.Name, r8, e.Message);
                 }
                 break;
             case 9: // addCol
@@ -217,12 +209,11 @@ class Simulator
                     sheet.addCol(c9);
                     Console.WriteLine("User[{0}]:[addCol] a new column added after column {1}.", Thread.CurrentThread.Name, c9);
                     cols++;
-                    wordsCols = cols <= originalCols ? cols : wordsCols;
+                    wordsCols = cols <= originalCols ? cols : originalCols;
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[addCol] ---Failed--- a new column wasn't added after column {1}.", Thread.CurrentThread.Name, c9);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[addCol] ---Failed--- a new column wasn't added after column {1}.\n\tReason: {2}", Thread.CurrentThread.Name, c9, e.Message);
                 }
                 break;
             case 10: // findAll
@@ -233,12 +224,11 @@ class Simulator
                     String[] out10 = new String[res10.Length];
                     for (int i = 0; i < res10.Length; i++)
                         out10[i] = res10[i].ToString();
-                    Console.WriteLine("User[{0}]:[findAll] string \"{1}\" was found in cells [{2}].", Thread.CurrentThread.Name, String.Join(", ", out10));
+                    Console.WriteLine("User[{0}]:[findAll] string \"{1}\" was found in cells [{2}].", Thread.CurrentThread.Name, str10, String.Join(", ", out10));
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[findAll] ---Failed--- string \"{1}\" wasn't found.", Thread.CurrentThread.Name, str10);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[findAll] ---Failed--- string \"{1}\" wasn't found.\n\tReason: {2}", Thread.CurrentThread.Name, str10, e.Message);
                 }
                 break;
             case 11: // setAll
@@ -247,12 +237,11 @@ class Simulator
                 try
                 {
                     sheet.setAll(str111, str211, false);
-                    Console.WriteLine("User[{0}]:[setAll] all strings \"{1}\" were replaced with string \"{2}\".", Thread.CurrentThread.Name, String.Join(", ", str111, str211));
+                    Console.WriteLine("User[{0}]:[setAll] all strings \"{1}\" were replaced with string \"{2}\".", Thread.CurrentThread.Name, str111, str211);
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[setAll] ---Failed--- strings \"{1}\" weren't replaced with strings \"{2}\".", Thread.CurrentThread.Name, str111, str211);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[setAll] ---Failed--- strings \"{1}\" weren't replaced with strings \"{2}\".\n\tReason: {3}", Thread.CurrentThread.Name, str111, str211, e.Message);
                 }
                 break;
             case 12: // getSize
@@ -262,8 +251,7 @@ class Simulator
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("User[{0}]:[getSize] ---Failed--- couldn't get spreadsheet's size.", Thread.CurrentThread.Name);
-                    Console.WriteLine("Reason: " + e.Message);
+                    Console.WriteLine("User[{0}]:[getSize] ---Failed--- couldn't get spreadsheet's size.\n\tReason: {1}", Thread.CurrentThread.Name, e.Message);
                 }
                 break;
             case 13: // setConcurrentSearchLimit

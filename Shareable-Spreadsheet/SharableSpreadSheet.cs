@@ -9,9 +9,11 @@ class SharableSpreadSheet
     private int users;
     private long readers = 0;
     private int writers = 0;
-    private Semaphore readWriteMutex = new Semaphore(1, 1);
+    //private Semaphore readSemaphore = new Semaphore(1, 1);
+    //private Semaphore writeSemaphore = new Semaphore(1, 1);
+    private Semaphore readWriteSemaphore = new Semaphore(1, 1);
     private Semaphore? searchersSemaphore;
-    private List<Mutex> rowsMutexes = new List<Mutex>();
+    private List<Semaphore> rowsSemaphores = new List<Semaphore>();
     private List<List<String>> sheet;
 
     // construct a nRows*nCols spreadsheet.
@@ -26,7 +28,7 @@ class SharableSpreadSheet
             throw new ArgumentOutOfRangeException("Users number must be a positive number, or -1 if not limited.");
         setConcurrentSearchLimit(nUsers);
         for (int i = 0; i < rowsNum; i++)
-            rowsMutexes.Add(new Mutex());
+            rowsSemaphores.Add(new Semaphore(1, 1));
         sheet = new List<List<String>>();
         for (int i = 0; i < rowsNum; i++)
         {
@@ -61,9 +63,9 @@ class SharableSpreadSheet
             exitWriteSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        rowsMutexes[row].WaitOne();
+        rowsSemaphores[row].WaitOne();
         sheet[row][col] = str;
-        rowsMutexes[row].ReleaseMutex();
+        rowsSemaphores[row].Release();
         exitWriteSection();
     }
 
@@ -99,16 +101,16 @@ class SharableSpreadSheet
         enterWriteSection();
         if (!checkRow(row1) || !checkRow(row2))
         {
-            exitStructSection();
+            exitWriteSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        rowsMutexes[row1].WaitOne();
-        rowsMutexes[row2].WaitOne();
+        rowsSemaphores[row1].WaitOne();
+        rowsSemaphores[row2].WaitOne();
         List<String> tmp = sheet[row1];
         sheet[row1] = sheet[row2];
         sheet[row2] = tmp;
-        rowsMutexes[row1].ReleaseMutex();
-        rowsMutexes[row2].ReleaseMutex();
+        rowsSemaphores[row1].Release();
+        rowsSemaphores[row2].Release();
         exitWriteSection();
     }
 
@@ -125,10 +127,14 @@ class SharableSpreadSheet
             exitStructSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        List<String> tmp = sheet[col1];
-        sheet[col1] = sheet[col2];
-        sheet[col2] = tmp;
-        exitWriteSection();
+        string tmp;
+        for (int i = 0; i < rowsNum; i++)
+        {
+            tmp = sheet[i][col1];
+            sheet[i][col1] = sheet[i][col2];
+            sheet[i][col2] = tmp;
+        }
+        exitStructSection();
     }
 
     // perform search in specific row
@@ -208,7 +214,7 @@ class SharableSpreadSheet
             sheet.Add(newRow);
         else
             sheet.Insert(row1 + 1, newRow);
-        rowsMutexes.Add(new Mutex());
+        rowsSemaphores.Add(new Semaphore(1, 1));
         exitStructSection();
     }
 
@@ -371,7 +377,6 @@ class SharableSpreadSheet
     // includes col1,col2,row1,row2
     private Tuple<int, int>? searchInRangeHelper(int col1, int col2, int row1, int row2, String str, bool _case)
     {
-        enterSearchSection();
         if (!checkCell(row1, col1) || !checkCell(row2, col2) || row1 > row2 || (row1 == row2 && col1 > col2))
         {
             exitSearchSection();
@@ -382,7 +387,6 @@ class SharableSpreadSheet
         {
             if (caseEquals(sheet[r][c], str, _case))
             {
-                exitSearchSection();
                 return new(r, c);
             }
             if (r == row2 && c == col2)
@@ -390,7 +394,6 @@ class SharableSpreadSheet
             c = c + 1 == colsNum ? 0 : c + 1;
             r = c == 0 ? r + 1 : r;
         }
-        exitSearchSection();
         return null;
     }
 
@@ -403,18 +406,18 @@ class SharableSpreadSheet
 
     private void enterReadSection()
     {
-        //readersMutex.WaitOne();
+        //readSemaphore.WaitOne();
         if (Interlocked.Increment(ref readers) == 1)
-            readWriteMutex.WaitOne();
-        //readersMutex.Release();
+            readWriteSemaphore.WaitOne();
+        //readSemaphore.Release();
     }
 
     private void exitReadSection()
     {
-        //readersMutex.WaitOne();
+        //readSemaphore.WaitOne();
         if (Interlocked.Decrement(ref readers) == 0)
-            readWriteMutex.Release();
-        //readersMutex.Release();
+            readWriteSemaphore.Release();
+        //readSemaphore.Release();
     }
 
     private void enterSearchSection()
@@ -432,31 +435,28 @@ class SharableSpreadSheet
     }
     private void enterWriteSection()
     {
-        //writersMutex.WaitOne();
+        //writeSemaphore.WaitOne();
         if (Interlocked.Increment(ref writers) == 1)
-            readWriteMutex.WaitOne();
-        //writersMutex.Release();
+            readWriteSemaphore.WaitOne();
+        //writeSemaphore.Release();
     }
 
     private void exitWriteSection()
     {
-        //writersMutex.WaitOne();
+        //writeSemaphore.WaitOne();
         if (Interlocked.Decrement(ref writers) == 0)
-            readWriteMutex.Release();
-        //writersMutex.Release();
+            readWriteSemaphore.Release();
+        //writeSemaphore.Release();
     }
 
     private void enterStructSection()
     {
-        readWriteMutex.WaitOne();
+        readWriteSemaphore.WaitOne();
     }
 
     private void exitStructSection()
     {
-        //writersMutex.WaitOne();
-        if (Interlocked.Decrement(ref writers) == 0)
-            readWriteMutex.Release();
-        //writersMutex.Release();
+        readWriteSemaphore.Release();
     }
 
     /// <summary>
