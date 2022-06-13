@@ -57,16 +57,16 @@ class SharableSpreadSheet
     // Write action - waits to enter write section.
     public void setCell(int row, int col, String str)
     {
-        enterStructSection();
+        enterWriteSection();
         if (!checkCell(row, col))
         {
-            exitStructSection();
+            exitWriteSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        //rowsSemaphores[row].WaitOne();
+        rowsSemaphores[row].WaitOne();
         sheet[row][col] = str;
-        //rowsSemaphores[row].Release();
-        exitStructSection();
+        rowsSemaphores[row].Release();
+        exitWriteSection();
     }
 
     // return first cell indexes that contains the string (search from first row to the last row)
