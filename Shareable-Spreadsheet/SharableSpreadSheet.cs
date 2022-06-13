@@ -188,7 +188,16 @@ class SharableSpreadSheet
     public Tuple<int, int> searchInRange(int col1, int col2, int row1, int row2, String str)
     {
         enterSearchSection();
-        Tuple<int, int>? res =  searchInRangeHelper(col1, col2, row1, row2, str, true);
+        Tuple<int, int>? res;
+        try
+        {
+            res = searchInRangeHelper(col1, col2, row1, row2, str, true);
+        }
+        catch (Exception)
+        {
+            exitSearchSection();
+            throw;
+        }
         exitSearchSection();
         if (res == null)
             throw new Exception(str + " not found.");
@@ -206,7 +215,7 @@ class SharableSpreadSheet
             exitStructSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        rowsNum++;
+        Interlocked.Increment(ref rowsNum);
         List<String> newRow = new List<String>();
         for (int i = 0; i < colsNum; i++)
             newRow.Add("");
@@ -229,7 +238,7 @@ class SharableSpreadSheet
             exitStructSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        colsNum++;
+        Interlocked.Increment(ref colsNum);
         if (col1 + 2 == colsNum)
         {
             for (int i = 0; i < rowsNum; i++)
@@ -252,7 +261,16 @@ class SharableSpreadSheet
         enterSearchSection();
         while (r < rowsNum)
         {
-            Tuple<int, int>? currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, str, caseSensitive);
+            Tuple<int, int>? currentRes;
+            try
+            {
+                currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, str, caseSensitive);
+            }
+            catch (Exception)
+            {
+                exitSearchSection();
+                throw;
+            }
             if (currentRes != null)
             {
                 res.Add(currentRes);
@@ -278,7 +296,16 @@ class SharableSpreadSheet
         int r = 0, c = 0;
         while (r < rowsNum)
         {
-            Tuple<int, int>? currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, oldStr, caseSensitive);
+            Tuple<int, int>? currentRes;
+            try
+            {
+                currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, oldStr, caseSensitive);
+            }
+            catch (Exception)
+            {
+                exitStructSection();
+                throw;
+            }
             if (currentRes != null)
             {
                 locations.Add(currentRes);
@@ -293,11 +320,8 @@ class SharableSpreadSheet
             exitStructSection();
             throw new Exception(oldStr + " not found.");
         }
-
         foreach (Tuple<int, int> location in locations)
-        {
             sheet[location.Item1][location.Item2] = newStr;
-        }
         exitStructSection();
     }
 
@@ -317,13 +341,11 @@ class SharableSpreadSheet
     // This function is used just in the creation
     public void setConcurrentSearchLimit(int nUsers)
     {
-        enterStructSection();
         users = nUsers;
         if (nUsers > 0)
             searchersSemaphore = new Semaphore(users, users);
         else
             searchersSemaphore = null;
-        exitStructSection();
     }
 
     // save the spreadsheet to a file fileName.
@@ -401,19 +423,16 @@ class SharableSpreadSheet
     private Tuple<int, int>? searchInRangeHelper(int col1, int col2, int row1, int row2, String str, bool _case)
     {
         if (!checkCell(row1, col1) || !checkCell(row2, col2) || row1 > row2 || (row1 == row2 && col1 > col2))
-        {
-            exitSearchSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
-        }
         int r = row1, c = col1;
         while (r < rowsNum)
         {
+            if ((r == row2 && c > col2) || (r > row2))
+                break;
             if (caseEquals(sheet[r][c], str, _case))
             {
                 return new(r, c);
             }
-            if (r == row2 && c == col2)
-                break;
             c = c + 1 == colsNum ? 0 : c + 1;
             r = c == 0 ? r + 1 : r;
         }
