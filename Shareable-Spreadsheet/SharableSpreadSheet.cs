@@ -9,8 +9,8 @@ class SharableSpreadSheet
     private int users;
     private long readers = 0;
     private int writers = 0;
-    //private Semaphore readSemaphore = new Semaphore(1, 1);
-    //private Semaphore writeSemaphore = new Semaphore(1, 1);
+    private Semaphore readSemaphore = new Semaphore(1, 1);
+    private Semaphore writeSemaphore = new Semaphore(1, 1);
     private Semaphore readWriteSemaphore = new Semaphore(1, 1);
     private Semaphore? searchersSemaphore;
     private List<Semaphore> rowsSemaphores = new List<Semaphore>();
@@ -448,18 +448,18 @@ class SharableSpreadSheet
 
     private void enterReadSection()
     {
-        //readSemaphore.WaitOne();
+        readSemaphore.WaitOne();
         if (Interlocked.Increment(ref readers) == 1)
             readWriteSemaphore.WaitOne();
-        //readSemaphore.Release();
+        readSemaphore.Release();
     }
 
     private void exitReadSection()
     {
-        //readSemaphore.WaitOne();
+        readSemaphore.WaitOne();
         if (Interlocked.Decrement(ref readers) == 0)
             readWriteSemaphore.Release();
-        //readSemaphore.Release();
+        readSemaphore.Release();
     }
 
     private void enterSearchSection()
@@ -477,18 +477,18 @@ class SharableSpreadSheet
     }
     private void enterWriteSection()
     {
-        //writeSemaphore.WaitOne();
+        writeSemaphore.WaitOne();
         if (Interlocked.Increment(ref writers) == 1)
             readWriteSemaphore.WaitOne();
-        //writeSemaphore.Release();
+        writeSemaphore.Release();
     }
 
     private void exitWriteSection()
     {
-        //writeSemaphore.WaitOne();
+        writeSemaphore.WaitOne();
         if (Interlocked.Decrement(ref writers) == 0)
             readWriteSemaphore.Release();
-        //writeSemaphore.Release();
+        writeSemaphore.Release();
     }
 
     private void enterStructSection()
