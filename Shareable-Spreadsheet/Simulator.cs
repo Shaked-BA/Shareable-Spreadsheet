@@ -25,7 +25,7 @@ class Simulator
         initVars(int.Parse(args[0]), int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]), int.Parse(args[4]));
         threadsStart();
         threadsJoin();
-        sheet.save("C:/Users/shake/Desktop/sheet.txt");
+        sheet.save("C:/Users/gadmi/Desktop/sheet.txt");
     }
 
     static private void initVars(int rowsNum, int colsNum, int threadsNum, int operations, int ms)
@@ -255,6 +255,7 @@ class Simulator
                 }
                 break;
             case 13: // setConcurrentSearchLimit
+                break;
                 int newUsers = random.Next(-1, nThreads + 1);
                 while (newUsers == 0)
                     newUsers = random.Next(-1, nThreads + 1);

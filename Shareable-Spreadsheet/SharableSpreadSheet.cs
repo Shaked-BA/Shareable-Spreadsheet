@@ -57,16 +57,16 @@ class SharableSpreadSheet
     // Write action - waits to enter write section.
     public void setCell(int row, int col, String str)
     {
-        enterWriteSection();
+        enterStructSection();
         if (!checkCell(row, col))
         {
-            exitWriteSection();
+            exitStructSection();
             throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        rowsSemaphores[row].WaitOne();
+        //rowsSemaphores[row].WaitOne();
         sheet[row][col] = str;
-        rowsSemaphores[row].Release();
-        exitWriteSection();
+        //rowsSemaphores[row].Release();
+        exitStructSection();
     }
 
     // return first cell indexes that contains the string (search from first row to the last row)
@@ -273,9 +273,32 @@ class SharableSpreadSheet
     {
         if (newStr == oldStr)
             return;
-        Tuple<int, int>[] locations = findAll(oldStr, caseSensitive);
+        enterStructSection();
+        List<Tuple<int, int>> locations = new List<Tuple<int, int>>();
+        int r = 0, c = 0;
+        while (r < rowsNum)
+        {
+            Tuple<int, int>? currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, oldStr, caseSensitive);
+            if (currentRes != null)
+            {
+                locations.Add(currentRes);
+                c = currentRes.Item2 + 1 >= colsNum ? 0 : currentRes.Item2 + 1;
+                r = c == 0 ? r + 1 : currentRes.Item1;
+            }
+            else
+                break;
+        }
+        if (locations.Count == 0)
+        {
+            exitStructSection();
+            throw new Exception(oldStr + " not found.");
+        }
+
         foreach (Tuple<int, int> location in locations)
-            setCell(location.Item1, location.Item2, newStr);
+        {
+            sheet[location.Item1][location.Item2] = newStr;
+        }
+        exitStructSection();
     }
 
     // return the size of the spreadsheet in nRows, nCols
