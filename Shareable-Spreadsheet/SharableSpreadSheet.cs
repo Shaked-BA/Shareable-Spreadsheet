@@ -1,27 +1,23 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
+
 class SharableSpreadSheet
 {
     private int rowsNum;
     private int colsNum;
-    private long users;
-    private long searches = 0;
-
-    private long readers = 0; //
+    private int users;
+    private long readers = 0;
     private int writers = 0;
-    private Mutex queue = new Mutex(); // TODO: needed??
-    private Mutex readersMutex = new Mutex();
-    private Mutex writersMutex = new Mutex();
-    private Mutex readWriteMutex = new Mutex(); //
-    private Mutex tableMutex = new Mutex();
-    private Semaphore? searchersSemaphore = null; //
-    private List<Mutex> rowsMutexes = new List<Mutex>(); //
-    private List<Mutex> colsMutexes = new List<Mutex>(); //
+    private Semaphore readSemaphore = new Semaphore(1, 1);
+    private Semaphore writeSemaphore = new Semaphore(1, 1);
+    private Semaphore readWriteSemaphore = new Semaphore(1, 1);
+    private Semaphore? searchersSemaphore;
+    private List<Semaphore> rowsSemaphores = new List<Semaphore>();
+    private List<List<String>> sheet;
 
-    private List<List<string>> sheet;
-
+    // construct a nRows*nCols spreadsheet.
     // nUsers used for setConcurrentSearchLimit, -1 mean no limit.
-    // No locks
     public SharableSpreadSheet(int nRows, int nCols, int nUsers = -1)
     {
         if (nRows <= 0 || nCols <= 0)
@@ -30,64 +26,62 @@ class SharableSpreadSheet
         colsNum = nCols;
         if (nUsers < -1)
             throw new ArgumentOutOfRangeException("Users number must be a positive number, or -1 if not limited.");
-        users = nUsers;
-        if (users > 0)
-            searchersSemaphore = new Semaphore(0, (int) users);
+        setConcurrentSearchLimit(nUsers);
         for (int i = 0; i < rowsNum; i++)
-            rowsMutexes.Add(new Mutex());
-        for (int i = 0; i < colsNum; i++)
-            colsMutexes.Add(new Mutex());
-        sheet = new List<List<string>>(); // construct a nRows*nCols spreadsheet
+            rowsSemaphores.Add(new Semaphore(1, 1));
+        sheet = new List<List<String>>();
         for (int i = 0; i < rowsNum; i++)
         {
-            sheet.Add(new List<string>());
+            sheet.Add(new List<String>());
             for (int j = 0; j < colsNum; j++)
                 sheet[i].Add("");
         }
     }
 
-        // return the string at [row,col]
-        // Read action
-        public string getCell(int row, int col)
+    // return the string at [row,col]
+    // Read action - waits to enter read section.
+    public String getCell(int row, int col)
     {
-        bool valid = checkCell(row, col);
-        if (!valid)
-            throw new ArgumentOutOfRangeException("Bad parameters");
         enterReadSection();
-        string cell = sheet[row][col];
+        if (!checkCell(row, col))
+        {
+            exitReadSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
+        }
+        String cell = sheet[row][col];
         exitReadSection();
         return cell;
     }
 
     // set the string at [row,col]
-    // Write action
-    public void setCell(int row, int col, string str)
+    // Write action - waits to enter write section.
+    public void setCell(int row, int col, String str)
     {
-        bool valid = checkCell(row, col);
-        if (!valid)
-            throw new ArgumentOutOfRangeException("Bad parameters");
         enterWriteSection();
-        rowsMutexes[row].WaitOne();
+        if (!checkCell(row, col))
+        {
+            exitWriteSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
+        }
+        rowsSemaphores[row].WaitOne();
         sheet[row][col] = str;
-        exitSearchSection();
+        rowsSemaphores[row].Release();
+        exitWriteSection();
     }
 
-    public Tuple<int,int> searchString(string str)
+    // return first cell indexes that contains the string (search from first row to the last row)
+    // Search action - waits to enter read section.
+    // Also waits for searcher lock, if searcers number is limited.
+    public Tuple<int,int> searchString(String str)
     {
-        // Read action
-        int row, col;
         enterSearchSection();
-        // return first cell indexes that contains the string (search from first row to the last row)
         for (int i = 0; i < rowsNum; i++)
         {
             for (int j = 0; j < colsNum; j++)
             {
-                //if (string.Equals(sheet[i, j], str))
-                if (string.Equals(sheet[i][j], str))
+                if (String.Equals(sheet[i][j], str))
                 {
-                    row = i;
-                    col = j;
-                    Tuple<int, int> t = new(row, col);
+                    Tuple<int, int> t = new(i, j);
                     exitSearchSection();
                     return t;
                 }
@@ -97,325 +91,316 @@ class SharableSpreadSheet
         throw new Exception(str + " not found.");
     }
 
+    // exchange the content of row1 and row2
+    // Write action - waits to enter write section.
+    // Also waits for rows locks.
     public void exchangeRows(int row1, int row2)
     {
-        // Write action, lock the rows
-        // exchange the content of row1 and row2
-        bool valid1 = checkRow(row1);
-        bool valid2 = checkRow(row2);
-        if (!valid1 || !valid2)
-        {
-            throw new Exception("Bad parameters");
-        }
+        if (row1 == row2)
+            return;
         enterWriteSection();
-        rowsMutexes[row1].WaitOne();
-        rowsMutexes[row2].WaitOne();
-        string[] tmp = new string[colsNum];
-        for (int i = 0; i < colsNum; i++)
+        if (!checkRow(row1) || !checkRow(row2))
         {
-            tmp[i] = sheet[row1][i];
-            sheet[row1][i] = sheet[row2][i];
-            sheet[row2][i] = tmp[i];
+            exitWriteSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        rowsMutexes[row2].ReleaseMutex();
-        rowsMutexes[row1].ReleaseMutex();
-        exitSearchSection();
-    }
-
-    public void exchangeCols(int col1, int col2)
-    {
-        // Write action, lock the cols
-        // exchange the content of col1 and col2
-        bool valid1 = checkCol(col1);
-        bool valid2 = checkCol(col2);
-        if (!valid1 || !valid2)
-        {
-            throw new Exception("Bad parameters");
-        }
-        enterWriteSection();
-        colsMutexes[col1].WaitOne();
-        colsMutexes[col2].WaitOne();
-        string[] tmp = new string[rowsNum];
-        for (int i = 0; i < rowsNum; i++)
-        {
-            tmp[i] = sheet[i][col1];
-            sheet[i][col1] = sheet[i][col2];
-            sheet[i][col2] = tmp[i];
-        }
-        colsMutexes[col2].ReleaseMutex();
-        colsMutexes[col1].ReleaseMutex();
+        rowsSemaphores[row1].WaitOne();
+        rowsSemaphores[row2].WaitOne();
+        List<String> tmp = sheet[row1];
+        sheet[row1] = sheet[row2];
+        sheet[row2] = tmp;
+        rowsSemaphores[row1].Release();
+        rowsSemaphores[row2].Release();
         exitWriteSection();
     }
 
-    public int searchInRow(int row, string str)
+    // exchange the content of col1 and col2
+    // Write action - waits to enter write section.
+    // Also waits for struct lock.
+    public void exchangeCols(int col1, int col2)
     {
-        // Read action
-        int col;
-        // perform search in specific row
-        bool valid = checkRow(row);
-        if (!valid)
+        if (col1 == col2)
+            return;
+        enterStructSection();
+        if (!checkCol(col1) || !checkCol(col2))
         {
-            throw new Exception("Bad parameters");
+            exitStructSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        enterSearchSection();
-        for (int j = 0; j < colsNum; j++)
-        {
-            if (string.Equals(sheet[row][j], str))
-            {
-                col = j;
-                exitSearchSection();
-                return col;
-            }
-        }
-        exitSearchSection();
-        throw new Exception(str + " not found.");
-    }
-
-    public int searchInCol(int col, string str)
-    {
-        // Read action
-        int row;
-        // perform search in specific col
-        bool valid = checkCol(col);
-        if (!valid)
-        {
-            throw new Exception("Bad parameters");
-        }
-        enterSearchSection();
+        string tmp;
         for (int i = 0; i < rowsNum; i++)
         {
-            //if (string.Equals(sheet[i, col], str))
-            if (string.Equals(sheet[i][col], str))
+            tmp = sheet[i][col1];
+            sheet[i][col1] = sheet[i][col2];
+            sheet[i][col2] = tmp;
+        }
+        exitStructSection();
+    }
+
+    // perform search in specific row
+    // Search action - waits to enter read section.
+    // Also waits for searcher lock, if searcers number is limited.
+    public int searchInRow(int row, String str)
+    {
+        enterSearchSection();
+        if (!checkRow(row))
+        {
+            exitSearchSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
+        }
+        for (int j = 0; j < colsNum; j++)
+        {
+            if (String.Equals(sheet[row][j], str))
             {
-                row = i;
                 exitSearchSection();
-                return row;
+                return j;
             }
         }
         exitSearchSection();
         throw new Exception(str + " not found.");
     }
 
-    public Tuple<int, int> searchInRange(int col1, int col2, int row1, int row2, string str)
+    // perform search in specific col
+    // Search action - waits to enter read section.
+    // Also waits for searcher lock, if searcers number is limited.
+    public int searchInCol(int col, String str)
     {
-        // Read action
         enterSearchSection();
-        Tuple<int, int> t =  searchInRangeHelper(col1, col2, row1, row2, str, true);
-        exitSearchSection();
-        if (t == null)
+        if (!checkCol(col))
         {
-            throw new Exception(str + " not found.");
+            exitSearchSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        return t;
+        for (int i = 0; i < rowsNum; i++)
+        {
+            if (String.Equals(sheet[i][col], str))
+            {
+                exitSearchSection();
+                return i;
+            }
+        }
+        exitSearchSection();
+        throw new Exception(str + " not found.");
     }
 
+    // Search action - waits to enter read section.
+    // Also waits for searcher lock, if searcers number is limited.
+    public Tuple<int, int> searchInRange(int col1, int col2, int row1, int row2, String str)
+    {
+        enterSearchSection();
+        Tuple<int, int>? res;
+        try
+        {
+            res = searchInRangeHelper(col1, col2, row1, row2, str, true);
+        }
+        catch (Exception)
+        {
+            exitSearchSection();
+            throw;
+        }
+        exitSearchSection();
+        if (res == null)
+            throw new Exception(str + " not found.");
+        return res;
+    }
+
+    // add a row after row1
+    // Write action - waits to enter write section.
+    // Also waits for struct lock.
     public void addRow(int row1)
     {
-        // Write action, lock rows from row1 (check collision with exchangeRows)
-        //add a row after row1
-        bool valid = checkRow(row1);
-        if (!valid)
+        enterStructSection();
+        if (!checkRow(row1))
         {
-            throw new Exception("Bad parameters");
+            exitStructSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        enterWriteSection();
-        for (int i = row1 + 1; i < rowsNum; i++)
-        {
-            rowsMutexes[i].WaitOne();
-        }
-        rowsNum++;
-        if (row1 + 2 == rowsNum)
-            rowsMutexes.Add(new Mutex());
-        else
-            rowsMutexes.Insert(row1 + 1, new Mutex());
-        rowsMutexes[row1 + 1].WaitOne();
-        List<string> newRow = new List<string>();
+        Interlocked.Increment(ref rowsNum);
+        List<String> newRow = new List<String>();
         for (int i = 0; i < colsNum; i++)
-        {
             newRow.Add("");
-        }
         if (row1 + 2 == rowsNum)
             sheet.Add(newRow);
         else
             sheet.Insert(row1 + 1, newRow);
-        for (int i = row1 + 1; i < rowsNum; i++)
-        {
-            rowsMutexes[i].ReleaseMutex();
-        }
-        exitWriteSection();
+        rowsSemaphores.Add(new Semaphore(1, 1));
+        exitStructSection();
     }
 
+    // add a column after col1
+    // Write action - waits to enter write section.
+    // Also waits for struct lock.
     public void addCol(int col1)
     {
-        // Write action, lock cols from col1 (check collision with exchangeCols)
-        //add a column after col1
-        bool valid = checkCol(col1);
-        if (!valid)
+        enterStructSection();
+        if (!checkCol(col1))
         {
-            throw new Exception("Bad parameters");
+            exitStructSection();
+            throw new ArgumentOutOfRangeException("Bad parameters");
         }
-        enterWriteSection();
-        for (int i = col1 + 1; i < colsNum; i++)
-        {
-            colsMutexes[i].WaitOne();
-        }
-        colsNum++;
-        if (col1 + 2 == colsNum)
-            colsMutexes.Add(new Mutex());
-        else
-            colsMutexes.Insert(col1 + 1, new Mutex());
-        colsMutexes[col1+1].WaitOne();
+        Interlocked.Increment(ref colsNum);
         if (col1 + 2 == colsNum)
         {
             for (int i = 0; i < rowsNum; i++)
-            {    
                 sheet[i].Add("");
-            }
         }
         else
         {
             for (int i = 0; i < rowsNum; i++)
-            {    
                 sheet[i].Insert(col1 + 1, "");
-            }
         }
-        for (int i = col1 + 1; i < colsNum; i++)
-        {
-            colsMutexes[i].ReleaseMutex();
-        }
-        exitWriteSection();
+        exitStructSection();
     }
 
-    public Tuple<int, int>[] findAll(string str, bool caseSensitive)
+    // perform search and return all relevant cells according to caseSensitive param
+    // Read action - waits to enter read section.
+    public Tuple<int, int>[] findAll(String str, bool caseSensitive)
     {
-        // Read action (unless ToUpper/ToLower needs a lock)
-        // perform search and return all relevant cells according to caseSensitive param
         List<Tuple<int, int>> res = new List<Tuple<int, int>>();
-        int r = 0;
-        int c = 0;
+        int r = 0, c = 0;
         enterSearchSection();
         while (r < rowsNum)
         {
-            if (searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, str, caseSensitive) != null)
+            Tuple<int, int>? currentRes;
+            try
             {
-                res.Add(searchInRangeHelper(c, colsNum-1, r, rowsNum-1, str, caseSensitive));
-                r = res[res.Count - 1].Item1;
-                c = res[res.Count - 1].Item2 + 1;
-                if (c >= colsNum)
-                {
-                    r++;
-                    c = 0;
-                }
+                currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, str, caseSensitive);
             }
-
+            catch (Exception)
+            {
+                exitSearchSection();
+                throw;
+            }
+            if (currentRes != null)
+            {
+                res.Add(currentRes);
+                c = currentRes.Item2 + 1 >= colsNum ? 0 : currentRes.Item2 + 1;
+                r = c == 0 ? r + 1 : currentRes.Item1;
+            }
             else
-            {
                 break;
-            }
-        }
-        if (res.Count == 0)
-        {
-            throw new Exception(str + " not found.");
         }
         exitSearchSection();
+        if (res.Count == 0)
+            throw new Exception(str + " not found.");
         return res.ToArray();
     }
 
-    public void setAll(string oldStr, string newStr, bool caseSensitive)
+    // replace all oldStr cells with the newStr str according to caseSensitive param
+    public void setAll(String oldStr, String newStr, bool caseSensitive)
     {
-        // Write action, lock relevant cells/their area
-        // replace all oldStr cells with the newStr str according to caseSensitive param
-        Tuple<int, int>[] tup = findAll(oldStr, caseSensitive);
-        int r;
-        int c;
-        for (int i = 0; i < tup.Length; i++)
+        if (newStr == oldStr)
+            return;
+        enterStructSection();
+        List<Tuple<int, int>> locations = new List<Tuple<int, int>>();
+        int r = 0, c = 0;
+        while (r < rowsNum)
         {
-            r = tup[i].Item1;
-            c = tup[i].Item2;
-            setCell(r, c, newStr);
+            Tuple<int, int>? currentRes;
+            try
+            {
+                currentRes = searchInRangeHelper(c, colsNum - 1, r, rowsNum - 1, oldStr, caseSensitive);
+            }
+            catch (Exception)
+            {
+                exitStructSection();
+                throw;
+            }
+            if (currentRes != null)
+            {
+                locations.Add(currentRes);
+                c = currentRes.Item2 + 1 >= colsNum ? 0 : currentRes.Item2 + 1;
+                r = c == 0 ? r + 1 : currentRes.Item1;
+            }
+            else
+                break;
         }
+        if (locations.Count == 0)
+        {
+            exitStructSection();
+            throw new Exception(oldStr + " not found.");
+        }
+        foreach (Tuple<int, int> location in locations)
+            sheet[location.Item1][location.Item2] = newStr;
+        exitStructSection();
     }
 
+    // return the size of the spreadsheet in nRows, nCols
+    // Read action - waits to enter read section.
     public Tuple<int, int> getSize()
     {
-        // Read action
         enterReadSection();
-        int nRows, nCols;
-        nRows = rowsNum;
-        nCols = colsNum;
+        Tuple<int, int> res = new Tuple<int, int>(rowsNum, colsNum);
         exitReadSection();
-        // return the size of the spreadsheet in nRows, nCols
-        return new Tuple<int, int>(nRows, nCols);
+        return res;
     }
 
+    // this function aims to limit the number of users that can perform the search operations concurrently.
+    // The default is no limit. When the function is called, the max number of concurrent search operations is set to nUsers. 
+    // In this case additional search operations will wait for existing search to finish.
+    // This function is used just in the creation
     public void setConcurrentSearchLimit(int nUsers)
     {
-        // this function aims to limit the number of users that can perform the search operations concurrently.
-        // The default is no limit. When the function is called, the max number of concurrent search operations is set to nUsers. 
-        // In this case additional search operations will wait for existing search to finish.
-        // This function is used just in the creation
-        Interlocked.CompareExchange(ref users, users, nUsers);
+        users = nUsers;
+        if (nUsers > 0)
+            searchersSemaphore = new Semaphore(users, users);
+        else
+            searchersSemaphore = null;
     }
 
-    public void save(string fileName)
+    // save the spreadsheet to a file fileName.
+    // you can decide the format you save the data. There are several options.
+    // Read action - waits to enter read section.
+    public void save(String fileName)
     {
-        // Read action
-        // save the spreadsheet to a file fileName.
-        // you can decide the format you save the data. There are several options.
-        using (StreamWriter sw = File.CreateText("Saved.txt"))
+
+        using (StreamWriter sw = File.CreateText(fileName))
         {
             enterReadSection();
             sw.WriteLine(rowsNum);
             sw.WriteLine(colsNum);
             sw.WriteLine(users);
-            sw.WriteLine(searches);
             for (int i = 0; i < rowsNum; i++)
             {
                 for (int j = 0; j < colsNum; j++)
-                {
                     sw.WriteLine(sheet[i][j]);
-                }
             }
             exitReadSection();
         }
     }
 
-    public void load(string fileName)
+    // load the spreadsheet from fileName
+    // replace the data and size of the current spreadsheet with the loaded data
+    // Write action - waits to enter write section.
+    // Also waits for struct lock.
+    public void load(String fileName)
     {
-        // Write action-lock the entire spreadsheet
-        // load the spreadsheet from fileName
-        // replace the data and size of the current spreadsheet with the loaded data
-        readWriteMutex.WaitOne();
+        enterStructSection();
         try
         {
-            // Create an instance of StreamReader to read from a file.
-            // The using statement also closes the StreamReader.
-            using (StreamReader sr = new StreamReader("Saved.txt"))
+            using (StreamReader sr = new StreamReader(fileName)) // using statement also closes the StreamReader
+
             {
                 rowsNum = int.Parse(sr.ReadLine());
                 colsNum = int.Parse(sr.ReadLine());
                 users = int.Parse(sr.ReadLine());
-                searches = int.Parse(sr.ReadLine());
-                sheet = new List<List<string>>();
-
+                sheet = new List<List<String>>();
                 for (int i = 0; i < rowsNum; i++)
                 {
-                    sheet.Add(new List<string>());
+                    List<String> newRow = new List<String>();
                     for (int j = 0; j < colsNum; j++)
-                    {
-                        sheet[i].Add(sr.ReadLine());
-                    }
+                        newRow.Add(sr.ReadLine());
+                    sheet.Add(newRow);
                 }
             }
         }
-
         catch (Exception e)
         {
-            // Let the user know what went wrong.
-            Console.WriteLine("The file could not be read:");
-            Console.WriteLine(e.Message);
+            exitStructSection();
+            Console.WriteLine("The file could not be read.");
+            throw new Exception(e.StackTrace);
         }
-        readWriteMutex.ReleaseMutex();
+        exitStructSection();
     }
 
     private bool checkCell(int row, int col)
@@ -433,156 +418,95 @@ class SharableSpreadSheet
         return (col >= 0 && col < colsNum);
     }
 
-    private Tuple<int, int> searchInRangeHelper(int col1, int col2, int row1, int row2, string str, bool _case)
+    // perform search within spesific range: [row1:row2,col1:col2] 
+    // includes col1,col2,row1,row2
+    private Tuple<int, int>? searchInRangeHelper(int col1, int col2, int row1, int row2, String str, bool _case)
     {
-        // Read action
-        // Check bounds
-        // Needs fixing on loops
-        bool valid1 = checkCell(row1, col1);
-        if (!valid1)
+        if (!checkCell(row1, col1) || !checkCell(row2, col2) || row1 > row2 || (row1 == row2 && col1 > col2))
+            throw new ArgumentOutOfRangeException("Bad parameters");
+        int r = row1, c = col1;
+        while (r < rowsNum)
         {
-            throw new Exception("Bad parameters");
-        }
-        bool valid2 = checkCell(row2, col2);
-        if (!valid2)
-        {
-            throw new Exception("Bad parameters");
-        }
-        if (row1 > row2 || (row1 == row2 && col1 > col2))
-        {
-            throw new Exception("Bad parameters");
-        }
-
-        if (users != -1)
-        {
-            while (searches >= users)
+            if ((r == row2 && c > col2) || (r > row2))
+                break;
+            if (caseEquals(sheet[r][c], str, _case))
             {
-                continue;
+                return new(r, c);
             }
+            c = c + 1 == colsNum ? 0 : c + 1;
+            r = c == 0 ? r + 1 : r;
         }
-        searches++;
-
-        int row, col;
-        // perform search within spesific range: [row1:row2,col1:col2] 
-        //includes col1,col2,row1,row2
-        if (row2 > row1)
-        {
-            for (int i = row1; i < row1 + 1; i++)
-            {
-                for (int j = col1; j < colsNum; j++)
-                {
-                    //if (string.Equals(sheet[i, j], str))
-                    //if (string.Equals(sheet[i][j], str))
-                    if (caseEquals(sheet[i][j], str, _case))
-                    {
-                        row = i;
-                        col = j;
-                        Tuple<int, int> t = new(row, col);
-                        searches--;
-                        return t;
-                    }
-                }
-            }
-
-            for (int i = row1 + 1; i < row2; i++)
-            {
-                for (int j = 0; j < colsNum; j++)
-                {
-                    //if (string.Equals(sheet[i, j], str))
-                    //if (string.Equals(sheet[i][j], str))
-                    if (caseEquals(sheet[i][j], str, _case))
-                    {
-                        row = i;
-                        col = j;
-                        Tuple<int, int> t = new(row, col);
-                        searches--;
-                        return t;
-                    }
-                }
-            }
-
-            for (int i = row2; i < row2 + 1; i++)
-            {
-                for (int j = 0; j < col2 + 1; j++)
-                {
-                    //if (string.Equals(sheet[i, j], str))
-                    //if (string.Equals(sheet[i][j], str))
-                    if (caseEquals(sheet[i][j], str, _case))
-                    {
-                        row = i;
-                        col = j;
-                        Tuple<int, int> t = new(row, col);
-                        searches--;
-                        return t;
-                    }
-                }
-            }
-        }
-        else
-        {
-            for (int i = row1; i < row2+1; i++)
-            {
-                for (int j = col1; j < col2+1; j++)
-                {
-                    if (caseEquals(sheet[i][j], str, _case))
-                    {
-                        row = i;
-                        col = j;
-                        Tuple<int, int> t = new(row, col);
-                        searches--;
-                        return t;
-                    }
-                }
-            }
-        }
-        searches--;
         return null;
     }
 
-    private bool caseEquals(string s1, string s2, bool _case)
+    private bool caseEquals(String s1, String s2, bool _case)
     {
         if (_case)
-        {
-            return string.Equals(s1, s2);
-        }
-
-        return string.Equals(s1.ToLower(), s2.ToLower());
+            return String.Equals(s1, s2);
+        return String.Equals(s1.ToLower(), s2.ToLower());
     }
 
     private void enterReadSection()
     {
+        readSemaphore.WaitOne();
         if (Interlocked.Increment(ref readers) == 1)
-            readWriteMutex.WaitOne();
+            readWriteSemaphore.WaitOne();
+        readSemaphore.Release();
     }
 
     private void exitReadSection()
     {
+        readSemaphore.WaitOne();
         if (Interlocked.Decrement(ref readers) == 0)
-            readWriteMutex.ReleaseMutex();
+            readWriteSemaphore.Release();
+        readSemaphore.Release();
     }
 
     private void enterSearchSection()
     {
-        if (users != -1)
+        if (searchersSemaphore != null)
             searchersSemaphore.WaitOne();
         enterReadSection();
     }
 
     private void exitSearchSection()
     {
-        if (users != -1)
+        if (searchersSemaphore != null)
             searchersSemaphore.Release();
         exitReadSection();
     }
     private void enterWriteSection()
     {
+        writeSemaphore.WaitOne();
         if (Interlocked.Increment(ref writers) == 1)
-            readWriteMutex.WaitOne();
+            readWriteSemaphore.WaitOne();
+        writeSemaphore.Release();
     }
 
     private void exitWriteSection()
     {
+        writeSemaphore.WaitOne();
         if (Interlocked.Decrement(ref writers) == 0)
-            writersMutex.ReleaseMutex();
+            readWriteSemaphore.Release();
+        writeSemaphore.Release();
+    }
+
+    private void enterStructSection()
+    {
+        readWriteSemaphore.WaitOne();
+    }
+
+    private void exitStructSection()
+    {
+        readWriteSemaphore.Release();
+    }
+
+    /// <summary>
+    /// /////////////
+    /// </summary>
+    public void printSheet()
+    {
+        foreach (List<String> row in sheet)
+            Console.WriteLine("[" + String.Join("|", row) + "]");
     }
 }
